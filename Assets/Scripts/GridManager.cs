@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using TMPro;
 
 public class GridManager : MonoBehaviour
 {
@@ -19,6 +20,10 @@ public class GridManager : MonoBehaviour
 
     // Keeps a reference to each rendered tile GO for runtime color updates (e.g. potion pickup).
     private GameObject[,] tileObjects;
+
+    // TMP references for tile labels (S/H/D). Used to toggle visibility when a character stands on them.
+    private readonly Dictionary<Vector2Int, TextMeshPro> tileLabels =
+        new Dictionary<Vector2Int, TextMeshPro>();
 
     private static readonly Vector2Int[] FourDirections =
     {
@@ -190,9 +195,15 @@ public class GridManager : MonoBehaviour
                                   : floorTilePrefab;
                 GameObject go;
 
+                // Tile系 (Floor/Wall/Damage) = sortingOrder 0
+                // 設置物系 (Stair)          = sortingOrder 1
+                int tileSortingOrder = isStair ? 1 : 0;
+
                 if (prefab != null)
                 {
                     go = Instantiate(prefab, new Vector3(x, y, 0f), Quaternion.identity, tilesParent);
+                    var prefabSR = go.GetComponent<SpriteRenderer>();
+                    if (prefabSR != null) prefabSR.sortingOrder = tileSortingOrder;
                 }
                 else
                 {
@@ -200,7 +211,8 @@ public class GridManager : MonoBehaviour
                     go.transform.SetParent(tilesParent);
                     go.transform.localPosition = new Vector3(x, y, 0f);
                     var sr = go.AddComponent<SpriteRenderer>();
-                    sr.sprite = sharedSprite;
+                    sr.sprite       = sharedSprite;
+                    sr.sortingOrder = tileSortingOrder;
                     sr.color  = isWall   ? WallColor
                               : isStair  ? StairColor
                               : isDamage ? DamageColor
@@ -209,12 +221,20 @@ public class GridManager : MonoBehaviour
 
                 go.name = $"{tileType}_{x}_{y}";
                 tileObjects[x, y] = go;
+
+                // Visual labels — Wall has no label; Floor label added later by PlacePotions.
+                var tilePos = new Vector2Int(x, y);
+                if (isStair)
+                    tileLabels[tilePos] = LabelUtil.AddLabel(go.transform, "S", Color.black);
+                else if (isDamage)
+                    tileLabels[tilePos] = LabelUtil.AddLabel(go.transform, "D", Color.white);
             }
         }
     }
 
     private void ClearTiles()
     {
+        tileLabels.Clear();
         if (tilesParent == null) return;
         for (int i = tilesParent.childCount - 1; i >= 0; i--)
             Destroy(tilesParent.GetChild(i).gameObject);
@@ -263,6 +283,10 @@ public class GridManager : MonoBehaviour
 
             grid[pos.x, pos.y] = TileType.Potion;
             SetTileColor(pos, PotionColor);
+            SetTileSortingOrder(pos, 1);  // 設置物系 = 1
+            var potionGO = tileObjects[pos.x, pos.y];
+            if (potionGO != null)
+                tileLabels[pos] = LabelUtil.AddLabel(potionGO.transform, "H", Color.white);
             placed++;
         }
     }
@@ -273,6 +297,14 @@ public class GridManager : MonoBehaviour
         if (!InBounds(pos) || grid[pos.x, pos.y] != TileType.Potion) return false;
         grid[pos.x, pos.y] = TileType.Floor;
         SetTileColor(pos, FloorColor);
+        SetTileSortingOrder(pos, 0);  // Tile系に戻す
+
+        // Remove "H" label from visibility dict and destroy the child GO.
+        tileLabels.Remove(pos);
+        var tile  = tileObjects[pos.x, pos.y];
+        var label = tile != null ? tile.transform.Find("Label") : null;
+        if (label != null) Destroy(label.gameObject);
+
         return true;
     }
 
@@ -283,6 +315,25 @@ public class GridManager : MonoBehaviour
         if (go == null) return;
         var sr = go.GetComponent<SpriteRenderer>();
         if (sr != null) sr.color = color;
+    }
+
+    private void SetTileSortingOrder(Vector2Int pos, int order)
+    {
+        if (tileObjects == null) return;
+        var sr = tileObjects[pos.x, pos.y]?.GetComponent<SpriteRenderer>();
+        if (sr != null) sr.sortingOrder = order;
+    }
+
+    // Called by GameManager after each turn.
+    // Hides tile labels (S/H/D) at positions occupied by a character,
+    // and re-enables them when the character moves away.
+    public void RefreshLabelVisibility(HashSet<Vector2Int> occupied)
+    {
+        foreach (var pair in tileLabels)
+        {
+            if (pair.Value == null) continue;
+            pair.Value.enabled = !occupied.Contains(pair.Key);
+        }
     }
 
     // --- Grid queries ---

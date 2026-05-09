@@ -61,7 +61,22 @@ public class GameManager : MonoBehaviour
     {
         if (State != GameState.Playing) return;
         TurnCount++;
+        RefreshTileLabels();          // hide labels under player's new position
         RunEnemyTurn();
+        if (State == GameState.Playing)
+            RefreshTileLabels();      // hide/show labels after all enemies settled
+    }
+
+    // Collects every gridPos occupied by player + enemies, then asks GridManager
+    // to disable tile labels (S/H/D) at those positions.
+    private void RefreshTileLabels()
+    {
+        if (gridManager == null || player == null) return;
+        var occupied = new HashSet<Vector2Int>();
+        occupied.Add(player.GridPos);
+        for (int i = 0; i < enemies.Count; i++)
+            if (enemies[i] != null) occupied.Add(enemies[i].GridPos);
+        gridManager.RefreshLabelVisibility(occupied);
     }
 
     private void RunEnemyTurn()

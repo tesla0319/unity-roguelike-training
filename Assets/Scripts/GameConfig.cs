@@ -12,11 +12,19 @@ public static class GameConfig
     public const int PotionMaxStock = 2;
     public const int PotionHealAmount = 30;
 
-    // Enemy
+    // Enemy — Normal
     public const int EnemyHP = 30;
     public const int EnemyATK = 10;
     public const int EnemyChaseRange = 6;
     public const float EnemyWanderRate = 0.3f;
+
+    // Enemy — Fast (low HP, same ATK, 2 steps per chase turn)
+    public const int FastEnemyHP  = 15;
+    public const int FastEnemyATK = 8;
+
+    // Enemy — Tank (high HP, high ATK, same movement as Normal)
+    public const int TankEnemyHP  = 60;
+    public const int TankEnemyATK = 15;
 
     // Damage Floor
     public const int DamageFloorDamage = 5;

@@ -100,10 +100,12 @@ public class FloorManager : MonoBehaviour
 
     private void SpawnEnemy(Vector2Int pos)
     {
-        var go    = new GameObject($"Enemy_{pos.x}_{pos.y}");
+        // Equal probability: 1/3 Normal, 1/3 Fast, 1/3 Tank.
+        EnemyType type = (EnemyType)Random.Range(0, 3);
+        var go    = new GameObject($"{type}_{pos.x}_{pos.y}");
         go.transform.SetParent(enemiesParent);
         var enemy = go.AddComponent<EnemyController>();
-        enemy.Initialize(pos, gridManager);
+        enemy.Initialize(pos, gridManager, type);
 
         if (GameManager.Instance != null)
             GameManager.Instance.RegisterEnemy(enemy);
