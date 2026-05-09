@@ -6,8 +6,9 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private FloorManager floorManager;
 
     public Vector2Int GridPos { get; private set; }
-    public int HP    { get; private set; }
-    public int MaxHP => GameConfig.PlayerMaxHP;
+    public int HP      { get; private set; }
+    public int MaxHP   => GameConfig.PlayerMaxHP;
+    public int Potions { get; private set; }
 
     private static readonly Color PlayerColor = new Color(0.2f, 0.45f, 0.9f);
 
@@ -56,6 +57,8 @@ public class PlayerController : MonoBehaviour
             TryMove(Vector2Int.left);
         else if (Input.GetKeyDown(KeyCode.D) || Input.GetKeyDown(KeyCode.RightArrow))
             TryMove(Vector2Int.right);
+        else if (Input.GetKeyDown(KeyCode.H))
+            TryUsePotion();
     }
 
     private void TryMove(Vector2Int delta)
@@ -97,19 +100,59 @@ public class PlayerController : MonoBehaviour
             GameManager.Instance.OnPlayerActionComplete();
     }
 
-    // Returns true if a stair was used (floor transition — no turn consumed).
+    // Returns true only for stair (floor transition skips turn).
+    // Potion pickup and damage floor are side effects of movement — turn is still consumed.
     private bool CheckTileEvent()
     {
-        if (gridManager.GetTile(GridPos) != TileType.Stair) return false;
+        TileType tile = gridManager.GetTile(GridPos);
 
-        if (floorManager == null)
+        // Auto-pickup on entering a Potion tile (spec §11.1).
+        if (tile == TileType.Potion)
+            TryPickUpPotion();
+
+        // Take damage when stepping on a damage floor (spec §12).
+        // DamagePlayer handles GameOver detection; if State becomes GameOver,
+        // OnPlayerActionComplete will be a no-op.
+        if (tile == TileType.Damage)
+            GameManager.Instance?.DamagePlayer(GameConfig.DamageFloorDamage);
+
+        if (tile == TileType.Stair)
         {
-            Debug.LogWarning("[PlayerController] Stair reached but FloorManager is null. " +
-                             "Add a FloorManager GameObject with FloorManager component to the scene.");
-            return false;
+            if (floorManager == null)
+            {
+                Debug.LogWarning("[PlayerController] Stair reached but FloorManager is null.");
+                return false;
+            }
+            floorManager.GoToNextFloor();
+            return true;
         }
-        floorManager.GoToNextFloor();
-        return true;
+
+        return false;
+    }
+
+    // Potion auto-pickup — only removes from map if inventory has space (spec §11.1).
+    private void TryPickUpPotion()
+    {
+        if (Potions >= GameConfig.PotionMaxStock)
+        {
+            Debug.Log($"[Item] Potion not picked up — inventory full ({Potions}/{GameConfig.PotionMaxStock}).");
+            return;
+        }
+        if (gridManager.TryConsumePotion(GridPos))
+        {
+            Potions++;
+            Debug.Log($"[Item] Picked up potion. Potions: {Potions}/{GameConfig.PotionMaxStock}");
+        }
+    }
+
+    // H key — consumes a turn only when HP < max and potions > 0 (spec §7.2).
+    private void TryUsePotion()
+    {
+        if (Potions <= 0 || HP >= MaxHP) return;
+        Potions--;
+        HP = Mathf.Min(HP + GameConfig.PotionHealAmount, MaxHP);
+        Debug.Log($"[Item] Used potion. HP: {HP}/{MaxHP}, Potions: {Potions}/{GameConfig.PotionMaxStock}");
+        NotifyTurnComplete();
     }
 
     // --- Public API ---
@@ -120,7 +163,11 @@ public class PlayerController : MonoBehaviour
         SyncTransform();
     }
 
-    public void InitHP() => HP = GameConfig.PlayerMaxHP;
+    public void InitHP()
+    {
+        HP      = GameConfig.PlayerMaxHP;
+        Potions = 0;
+    }
 
     // Pure HP reduction — logging and GameOver are handled by GameManager.DamagePlayer.
     public void TakeDamage(int amount) => HP = Mathf.Max(0, HP - amount);

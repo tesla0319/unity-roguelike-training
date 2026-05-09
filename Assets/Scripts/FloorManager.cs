@@ -28,8 +28,9 @@ public class FloorManager : MonoBehaviour
             Debug.LogError("[FloorManager] PlayerController not found. Enemies not spawned.");
             yield break;
         }
+        gridManager.PlacePotions(GameConfig.Floors[CurrentFloor - 1].PotionCount, player.GridPos);
         SpawnEnemies(GameConfig.Floors[CurrentFloor - 1].EnemyCount, player.GridPos);
-        Debug.Log($"[FloorManager] Floor {CurrentFloor} ready — {GameConfig.Floors[CurrentFloor - 1].EnemyCount} enemies spawned.");
+        Debug.Log($"[FloorManager] Floor {CurrentFloor} ready — {GameConfig.Floors[CurrentFloor - 1].EnemyCount} enemies, {GameConfig.Floors[CurrentFloor - 1].PotionCount} potions spawned.");
     }
 
     // Public API kept for external callers (e.g. future systems).
@@ -52,6 +53,7 @@ public class FloorManager : MonoBehaviour
         ClearEnemies();
         gridManager.GenerateMap(GameConfig.Floors[CurrentFloor - 1]);
         player.Spawn(gridManager.GetRandomFloorPosition());
+        gridManager.PlacePotions(GameConfig.Floors[CurrentFloor - 1].PotionCount, player.GridPos);
         SpawnEnemies(GameConfig.Floors[CurrentFloor - 1].EnemyCount, player.GridPos);
         Debug.Log($"[FloorManager] Entered floor {CurrentFloor}.");
     }
@@ -62,6 +64,7 @@ public class FloorManager : MonoBehaviour
         ClearEnemies();
         gridManager.GenerateMap(GameConfig.Floors[0]);
         player.Spawn(gridManager.GetRandomFloorPosition());
+        gridManager.PlacePotions(GameConfig.Floors[0].PotionCount, player.GridPos);
         SpawnEnemies(GameConfig.Floors[0].EnemyCount, player.GridPos);
     }
 

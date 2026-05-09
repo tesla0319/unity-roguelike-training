@@ -11,9 +11,14 @@ public class GridManager : MonoBehaviour
     private TileType[,] grid;
     private Sprite sharedSprite;
 
-    private static readonly Color FloorColor = new Color(0.75f, 0.75f, 0.75f);
-    private static readonly Color WallColor  = new Color(0.25f, 0.25f, 0.25f);
-    private static readonly Color StairColor = new Color(0.95f, 0.85f, 0.10f);
+    private static readonly Color FloorColor  = new Color(0.75f, 0.75f, 0.75f);
+    private static readonly Color WallColor   = new Color(0.25f, 0.25f, 0.25f);
+    private static readonly Color StairColor  = new Color(0.95f, 0.85f, 0.10f);
+    private static readonly Color PotionColor = new Color(0.20f, 0.80f, 0.25f);
+    private static readonly Color DamageColor = new Color(0.90f, 0.45f, 0.10f);
+
+    // Keeps a reference to each rendered tile GO for runtime color updates (e.g. potion pickup).
+    private GameObject[,] tileObjects;
 
     private static readonly Vector2Int[] FourDirections =
     {
@@ -28,24 +33,20 @@ public class GridManager : MonoBehaviour
         GenerateMap(GameConfig.Floors[0]);
     }
 
-    // Called by FloorManager in later phases.
+    // Called by FloorManager. Generates walls → stair → damage floors → render.
     public void GenerateMap(FloorConfig config)
-    {
-        GenerateMap(config.WallCount);
-    }
-
-    public void GenerateMap(int wallCount)
     {
         ClearTiles();
 
-        bool success = TryGenerate(wallCount, GameConfig.MapGenMaxRetries);
+        bool success = TryGenerate(config.WallCount, GameConfig.MapGenMaxRetries);
         if (!success)
         {
-            int reduced = Mathf.RoundToInt(wallCount * 0.8f);
+            int reduced = Mathf.RoundToInt(config.WallCount * 0.8f);
             TryGenerate(reduced, GameConfig.MapGenMaxRetries);
         }
 
         PlaceStair();
+        PlaceDamageFloors(config.DamageCount);
         RenderTiles();
     }
 
@@ -146,17 +147,43 @@ public class GridManager : MonoBehaviour
         grid[pos.x, pos.y] = TileType.Stair;
     }
 
+    // Placed after PlaceStair() so damage floors never overlap the stair tile.
+    // Player spawn is determined later (GetRandomFloorPosition returns Floor only),
+    // so the player never spawns on a Damage tile.
+    private void PlaceDamageFloors(int count)
+    {
+        var candidates = new List<Vector2Int>();
+        for (int x = 0; x < GameConfig.GridSize; x++)
+            for (int y = 0; y < GameConfig.GridSize; y++)
+                if (grid[x, y] == TileType.Floor)
+                    candidates.Add(new Vector2Int(x, y));
+
+        int placed = 0;
+        while (placed < count && candidates.Count > 0)
+        {
+            int idx = Random.Range(0, candidates.Count);
+            Vector2Int pos = candidates[idx];
+            candidates[idx] = candidates[candidates.Count - 1];
+            candidates.RemoveAt(candidates.Count - 1);
+            grid[pos.x, pos.y] = TileType.Damage;
+            placed++;
+        }
+    }
+
     // --- Rendering ---
 
     private void RenderTiles()
     {
+        tileObjects = new GameObject[GameConfig.GridSize, GameConfig.GridSize];
+
         for (int x = 0; x < GameConfig.GridSize; x++)
         {
             for (int y = 0; y < GameConfig.GridSize; y++)
             {
                 TileType tileType = grid[x, y];
-                bool isWall  = tileType == TileType.Wall;
-                bool isStair = tileType == TileType.Stair;
+                bool isWall   = tileType == TileType.Wall;
+                bool isStair  = tileType == TileType.Stair;
+                bool isDamage = tileType == TileType.Damage;
 
                 GameObject prefab = isWall  ? wallTilePrefab
                                   : isStair ? stairTilePrefab
@@ -174,10 +201,14 @@ public class GridManager : MonoBehaviour
                     go.transform.localPosition = new Vector3(x, y, 0f);
                     var sr = go.AddComponent<SpriteRenderer>();
                     sr.sprite = sharedSprite;
-                    sr.color = isWall ? WallColor : (isStair ? StairColor : FloorColor);
+                    sr.color  = isWall   ? WallColor
+                              : isStair  ? StairColor
+                              : isDamage ? DamageColor
+                              : FloorColor;
                 }
 
                 go.name = $"{tileType}_{x}_{y}";
+                tileObjects[x, y] = go;
             }
         }
     }
@@ -206,6 +237,55 @@ public class GridManager : MonoBehaviour
         }
         return floors[Random.Range(0, floors.Count)];
     }
+
+    // --- Potion API (called by FloorManager / PlayerController) ---
+
+    // Place count potions on random Floor cells, excluding playerPos.
+    // Must be called after GenerateMap() and player.Spawn().
+    public void PlacePotions(int count, Vector2Int playerPos)
+    {
+        var candidates = new List<Vector2Int>();
+        for (int x = 0; x < GameConfig.GridSize; x++)
+            for (int y = 0; y < GameConfig.GridSize; y++)
+            {
+                var pos = new Vector2Int(x, y);
+                if (grid[x, y] == TileType.Floor && pos != playerPos)
+                    candidates.Add(pos);
+            }
+
+        int placed = 0;
+        while (placed < count && candidates.Count > 0)
+        {
+            int idx = Random.Range(0, candidates.Count);
+            Vector2Int pos = candidates[idx];
+            candidates[idx] = candidates[candidates.Count - 1];
+            candidates.RemoveAt(candidates.Count - 1);
+
+            grid[pos.x, pos.y] = TileType.Potion;
+            SetTileColor(pos, PotionColor);
+            placed++;
+        }
+    }
+
+    // Called when the player picks up a potion. Returns false if no potion at pos.
+    public bool TryConsumePotion(Vector2Int pos)
+    {
+        if (!InBounds(pos) || grid[pos.x, pos.y] != TileType.Potion) return false;
+        grid[pos.x, pos.y] = TileType.Floor;
+        SetTileColor(pos, FloorColor);
+        return true;
+    }
+
+    private void SetTileColor(Vector2Int pos, Color color)
+    {
+        if (tileObjects == null) return;
+        var go = tileObjects[pos.x, pos.y];
+        if (go == null) return;
+        var sr = go.GetComponent<SpriteRenderer>();
+        if (sr != null) sr.color = color;
+    }
+
+    // --- Grid queries ---
 
     public TileType GetTile(Vector2Int pos)
     {

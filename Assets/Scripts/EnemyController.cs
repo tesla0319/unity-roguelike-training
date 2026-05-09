@@ -29,6 +29,7 @@ public class EnemyController : MonoBehaviour
     private void Die()
     {
         Debug.Log($"[Combat] Enemy at {GridPos} defeated!");
+        GameManager.Instance?.AddKill();
         GameManager.Instance?.UnregisterEnemy(this);
         Destroy(gameObject);
     }
@@ -77,6 +78,11 @@ public class EnemyController : MonoBehaviour
         if (GameManager.Instance != null && GameManager.Instance.IsOccupiedByEnemy(next)) return false;
         GridPos = next;
         SyncTransform();
+
+        // DEBUG: confirm damage floor does NOT affect enemy HP (spec §12 MVP).
+        if (gridManager.GetTile(GridPos) == TileType.Damage)
+            Debug.Log($"[Debug] Enemy stepped on damage floor at {GridPos}. HP: {HP}/{GameConfig.EnemyHP} (no damage — immune per spec)");
+
         return true;
     }
 

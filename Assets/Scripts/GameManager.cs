@@ -22,6 +22,14 @@ public class GameManager : MonoBehaviour
     public bool IsPlayerTurn =>
         State == GameState.Playing && CurrentTurn == TurnPhase.PlayerTurn;
 
+    public int TurnCount { get; private set; }
+    public int KillCount { get; private set; }
+
+    public int GetScore(int currentFloor) =>
+        Mathf.Max(0, KillCount * GameConfig.ScorePerKill
+                   + currentFloor * GameConfig.ScorePerFloor
+                   - TurnCount);
+
     private void Awake()
     {
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
@@ -46,10 +54,13 @@ public class GameManager : MonoBehaviour
 
     // --- Turn management ---
 
+    public void AddKill() => KillCount++;
+
     // Called by PlayerController after any turn-consuming action.
     public void OnPlayerActionComplete()
     {
         if (State != GameState.Playing) return;
+        TurnCount++;
         RunEnemyTurn();
     }
 
@@ -92,6 +103,8 @@ public class GameManager : MonoBehaviour
 
     public void ResetGame()
     {
+        TurnCount = 0;
+        KillCount = 0;
         player?.InitHP();
         State       = GameState.Playing;
         CurrentTurn = TurnPhase.PlayerTurn;
